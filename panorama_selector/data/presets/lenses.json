@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Example 130deg Lens",
+    "hfov_deg": 130.0,
+    "vfov_deg": 90.0,
+    "diameter_mm": 20.0,
+    "length_mm": 20.0
+  }
+]
