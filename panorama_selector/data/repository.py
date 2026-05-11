@@ -51,6 +51,20 @@ class SpecRepository:
                 (lens.name, lens.hfov_deg, lens.vfov_deg, lens.diameter_mm, lens.length_mm),
             )
 
+    def delete_camera(self, name: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM cameras WHERE name = ?",
+                (name,),
+            )
+
+    def delete_lens(self, name: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM lenses WHERE name = ?",
+                (name,),
+            )
+
     def list_cameras(self) -> list[CameraSpec]:
         with self._connect() as conn:
             rows = conn.execute(

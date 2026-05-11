@@ -86,6 +86,8 @@ class MainWindow(QMainWindow):
         self.library_panel.save_lens_requested.connect(self._save_current_lens)
         self.library_panel.load_camera_requested.connect(self._load_camera)
         self.library_panel.load_lens_requested.connect(self._load_lens)
+        self.library_panel.delete_camera_requested.connect(self._delete_camera)
+        self.library_panel.delete_lens_requested.connect(self._delete_lens)
         self.library_panel.db_path_changed.connect(self._change_db_path)
 
     def calculate(self) -> None:
@@ -174,6 +176,38 @@ class MainWindow(QMainWindow):
             return
         self.spec_panel.set_lens_spec(lens)
         self.calculate()
+
+    def _delete_camera(self, name: str) -> None:
+        result = QMessageBox.question(
+            self,
+            "카메라 삭제",
+            f"선택한 카메라 스펙을 삭제할까요?\n\n{name}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        self.repository.delete_camera(name)
+        self._refresh_library()
+        self.statusBar().showMessage(f"카메라 스펙 삭제 완료: {name}")
+
+    def _delete_lens(self, name: str) -> None:
+        result = QMessageBox.question(
+            self,
+            "렌즈 삭제",
+            f"선택한 렌즈 스펙을 삭제할까요?\n\n{name}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        self.repository.delete_lens(name)
+        self._refresh_library()
+        self.statusBar().showMessage(f"렌즈 스펙 삭제 완료: {name}")
 
     def _refresh_library(self) -> None:
         self.library_panel.set_items(self.repository.list_cameras(), self.repository.list_lenses())

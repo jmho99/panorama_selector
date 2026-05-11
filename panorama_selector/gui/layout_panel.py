@@ -35,12 +35,6 @@ class LayoutPanel(QWidget):
         self.radius_mm.setValue(80.0)
         self.radius_mm.setSuffix(" mm")
 
-        self.evaluation_distance_mm = QDoubleSpinBox()
-        self.evaluation_distance_mm.setRange(0.0, 1_000_000.0)
-        self.evaluation_distance_mm.setDecimals(1)
-        self.evaluation_distance_mm.setValue(5000.0)
-        self.evaluation_distance_mm.setSuffix(" mm")
-
         self.target_panorama_deg = QDoubleSpinBox()
         self.target_panorama_deg.setRange(0.0, 360.0)
         self.target_panorama_deg.setDecimals(2)
@@ -69,7 +63,6 @@ class LayoutPanel(QWidget):
         form = QFormLayout()
         form.addRow("렌즈/카메라 개수", self.camera_count)
         form.addRow("기준원 반지름", self.radius_mm)
-        form.addRow("분석 거리", self.evaluation_distance_mm)
         form.addRow("최종 파노라마 목표 각도", self.target_panorama_deg)
         form.addRow("", self.use_camera_spacing_deg)
         form.addRow("카메라 간 각도", self.camera_spacing_deg)
@@ -90,12 +83,12 @@ class LayoutPanel(QWidget):
 
         self.camera_count.valueChanged.connect(self._on_values_changed)
         self.radius_mm.valueChanged.connect(self._on_values_changed)
-        self.evaluation_distance_mm.valueChanged.connect(self._on_values_changed)
         self.target_panorama_deg.valueChanged.connect(self._on_values_changed)
         self.use_camera_spacing_deg.stateChanged.connect(self._on_camera_spacing_mode_changed)
         self.camera_spacing_deg.valueChanged.connect(self._on_values_changed)
         self.yaw_offset_deg.valueChanged.connect(self._on_values_changed)
         self.calculate_button.clicked.connect(self.calculate_requested.emit)
+
         self._update_spacing_label()
 
     def get_config(self) -> LayoutConfig:
@@ -107,7 +100,6 @@ class LayoutPanel(QWidget):
             camera_count=self.camera_count.value(),
             radius_mm=self.radius_mm.value(),
             target_panorama_deg=self.target_panorama_deg.value(),
-            evaluation_distance_mm=self.evaluation_distance_mm.value(),
             use_camera_spacing_deg=self.use_camera_spacing_deg.isChecked(),
             camera_spacing_deg=camera_spacing_deg,
             yaw_offset_deg=self.yaw_offset_deg.value(),

@@ -23,12 +23,16 @@ class LibraryPanel(QWidget):
     save_lens_requested = Signal()
     load_camera_requested = Signal(str)
     load_lens_requested = Signal(str)
+    delete_camera_requested = Signal(str)
+    delete_lens_requested = Signal(str)
     db_path_changed = Signal(str)
 
     def __init__(self, default_db_path: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.db_path_label = QLabel(default_db_path)
-        self.db_path_label.setTextInteractionFlags(self.db_path_label.textInteractionFlags() | QtTextSelectableByMouse())
+        self.db_path_label.setTextInteractionFlags(
+            self.db_path_label.textInteractionFlags() | QtTextSelectableByMouse()
+        )
 
         self.choose_db_button = QPushButton("DB 위치 선택")
         self.refresh_button = QPushButton("목록 새로고침")
@@ -36,6 +40,8 @@ class LibraryPanel(QWidget):
         self.save_lens_button = QPushButton("현재 렌즈 저장")
         self.load_camera_button = QPushButton("선택 카메라 불러오기")
         self.load_lens_button = QPushButton("선택 렌즈 불러오기")
+        self.delete_camera_button = QPushButton("선택 카메라 삭제")
+        self.delete_lens_button = QPushButton("선택 렌즈 삭제")
 
         self.camera_list = QListWidget()
         self.lens_list = QListWidget()
@@ -43,12 +49,20 @@ class LibraryPanel(QWidget):
         camera_tab = QWidget()
         camera_layout = QVBoxLayout(camera_tab)
         camera_layout.addWidget(self.camera_list)
-        camera_layout.addWidget(self.load_camera_button)
+
+        camera_button_row = QHBoxLayout()
+        camera_button_row.addWidget(self.load_camera_button)
+        camera_button_row.addWidget(self.delete_camera_button)
+        camera_layout.addLayout(camera_button_row)
 
         lens_tab = QWidget()
         lens_layout = QVBoxLayout(lens_tab)
         lens_layout.addWidget(self.lens_list)
-        lens_layout.addWidget(self.load_lens_button)
+
+        lens_button_row = QHBoxLayout()
+        lens_button_row.addWidget(self.load_lens_button)
+        lens_button_row.addWidget(self.delete_lens_button)
+        lens_layout.addLayout(lens_button_row)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(camera_tab, "카메라")
@@ -79,6 +93,8 @@ class LibraryPanel(QWidget):
         self.save_lens_button.clicked.connect(self.save_lens_requested.emit)
         self.load_camera_button.clicked.connect(self._emit_load_camera)
         self.load_lens_button.clicked.connect(self._emit_load_lens)
+        self.delete_camera_button.clicked.connect(self._emit_delete_camera)
+        self.delete_lens_button.clicked.connect(self._emit_delete_lens)
 
     def set_db_path(self, path: str) -> None:
         self.db_path_label.setText(path)
@@ -111,6 +127,16 @@ class LibraryPanel(QWidget):
         item = self.lens_list.currentItem()
         if item is not None:
             self.load_lens_requested.emit(item.text())
+
+    def _emit_delete_camera(self) -> None:
+        item = self.camera_list.currentItem()
+        if item is not None:
+            self.delete_camera_requested.emit(item.text())
+
+    def _emit_delete_lens(self) -> None:
+        item = self.lens_list.currentItem()
+        if item is not None:
+            self.delete_lens_requested.emit(item.text())
 
 
 def QtTextSelectableByMouse():

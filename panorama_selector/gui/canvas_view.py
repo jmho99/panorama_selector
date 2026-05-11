@@ -5,7 +5,7 @@ from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QToolButton, QWidget
 
 from panorama_selector.core.geometry import (
     applied_camera_step_deg,
@@ -18,13 +18,44 @@ from panorama_selector.core.models import BlindZoneResult, LensSpec, LayoutConfi
 
 
 class CanvasView(QWidget):
+    DEFAULT_PX_PER_MM = 1.0
+    ZOOM_STEP = 1.2
+    MIN_ZOOM = 0.05
+    MAX_ZOOM = 50.0
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumSize(520, 520)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         self._config: LayoutConfig | None = None
         self._lens: LensSpec | None = None
         self._placements: list[Placement] = []
         self._fit: dict[str, Any] = {}
+
+        self._zoom = 1.0
+        self._pan = QPointF(0.0, 0.0)
+        self._is_panning = False
+        self._last_pan_pos = QPointF(0.0, 0.0)
+
+        self._zoom_in_button = QToolButton(self)
+        self._zoom_in_button.setStyleSheet("QToolButton { border: 1px solid gray; }")
+        self._zoom_in_button.setText("+")
+        self._zoom_in_button.setToolTip("확대")
+        self._zoom_in_button.setAutoRaise(True)
+        self._zoom_in_button.setFixedSize(28, 28)
+        self._zoom_in_button.clicked.connect(lambda _checked=False: self._zoom_by(self.ZOOM_STEP))
+
+        self._zoom_out_button = QToolButton(self)
+        self._zoom_out_button.setStyleSheet("QToolButton { border: 1px solid gray; }")
+        self._zoom_out_button.setText("-")
+        self._zoom_out_button.setToolTip("축소")
+        self._zoom_out_button.setAutoRaise(True)
+        self._zoom_out_button.setFixedSize(28, 28)
+        self._zoom_out_button.clicked.connect(lambda _checked=False: self._zoom_by(1.0 / self.ZOOM_STEP))
+
+        self._position_zoom_buttons()
 
     def set_scene(
         self,
@@ -39,6 +70,52 @@ class CanvasView(QWidget):
         self._fit = fit
         self.update()
 
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._position_zoom_buttons()
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt override
+        delta_y = event.angleDelta().y()
+        if delta_y == 0:
+            event.ignore()
+            return
+
+        steps = delta_y / 120.0
+        factor = self.ZOOM_STEP**steps
+        self._zoom_at(factor, event.position())
+        event.accept()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._is_panning = True
+            self._last_pan_pos = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self._is_panning:
+            current_pos = event.position()
+            delta = current_pos - self._last_pan_pos
+            self._pan += delta
+            self._last_pan_pos = current_pos
+            self.update()
+            event.accept()
+            return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() == Qt.MouseButton.MiddleButton and self._is_panning:
+            self._is_panning = False
+            self.unsetCursor()
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)
+
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -50,42 +127,93 @@ class CanvasView(QWidget):
 
         near_blind_zones = compute_near_blind_zones(self._config, self._lens)
 
-        margin = 48
-        center = QPointF(self.width() / 2.0, self.height() / 2.0)
-
-        view_radius_px = min(self.width(), self.height()) / 2.0 - margin
-        view_radius_mm = self._view_radius_mm(near_blind_zones)
-        px_per_mm = view_radius_px / view_radius_mm
+        center = self._viewport_center()
+        px_per_mm = self._current_px_per_mm()
 
         reference_radius_px = self._config.radius_mm * px_per_mm
+        fov_length_px = self._fov_preview_length_mm(near_blind_zones) * px_per_mm
 
-        self._draw_analysis_label(painter)
         self._draw_reference_circle(painter, center, reference_radius_px)
-        self._draw_angular_blind_zones(painter, center, view_radius_px)
-        self._draw_cameras(painter, center, px_per_mm, view_radius_px)
+        self._draw_angular_blind_zones(painter, center, fov_length_px)
+        self._draw_cameras(painter, center, px_per_mm, fov_length_px)
         self._draw_near_blind_zones(painter, center, px_per_mm, near_blind_zones)
         self._draw_caption(painter)
+        self._draw_view_hint_label(painter)
 
-    def _view_radius_mm(self, near_blind_zones: list[BlindZoneResult]) -> float:
+    def _position_zoom_buttons(self) -> None:
+        margin = 10
+        spacing = 3
+        button_size = self._zoom_in_button.width()
+
+        x = self.width() - margin - button_size
+        y = self.height() - margin - button_size * 2 - spacing
+
+        self._zoom_in_button.move(x, y)
+        self._zoom_out_button.move(x, y + button_size + spacing)
+
+    def _zoom_by(self, factor: float) -> None:
+        self._zoom_at(factor, QPointF(self.width() / 2.0, self.height() / 2.0))
+
+    def _zoom_at(self, factor: float, anchor_pos: QPointF) -> None:
+        if factor <= 0.0:
+            return
+
+        old_zoom = self._zoom
+        new_zoom = max(self.MIN_ZOOM, min(self.MAX_ZOOM, old_zoom * factor))
+
+        if math.isclose(old_zoom, new_zoom):
+            return
+
+        old_scale = self._current_px_per_mm()
+        old_center = self._viewport_center()
+
+        world_x = (anchor_pos.x() - old_center.x()) / old_scale
+        world_y = (old_center.y() - anchor_pos.y()) / old_scale
+
+        self._zoom = new_zoom
+
+        new_scale = self._current_px_per_mm()
+        new_center = QPointF(
+            anchor_pos.x() - world_x * new_scale,
+            anchor_pos.y() + world_y * new_scale,
+        )
+
+        self._pan = QPointF(
+            new_center.x() - self.width() / 2.0,
+            new_center.y() - self.height() / 2.0,
+        )
+
+        self.update()
+
+    def _viewport_center(self) -> QPointF:
+        return QPointF(
+            self.width() / 2.0 + self._pan.x(),
+            self.height() / 2.0 + self._pan.y(),
+        )
+
+    def _current_px_per_mm(self) -> float:
+        return max(self.DEFAULT_PX_PER_MM * self._zoom, 1e-6)
+
+    def _fov_preview_length_mm(self, near_blind_zones: list[BlindZoneResult]) -> float:
         assert self._config is not None
 
-        max_distance_mm = max(self._config.radius_mm * 2.5, 1.0)
+        length_mm = max(self._config.radius_mm * 3.0, 300.0)
 
         for placement in self._placements:
-            max_distance_mm = max(
-                max_distance_mm,
-                math.hypot(placement.x_mm, placement.y_mm) * 1.5,
+            length_mm = max(
+                length_mm,
+                math.hypot(placement.x_mm, placement.y_mm) * 2.5,
             )
 
         for zone in near_blind_zones:
-            max_distance_mm = max(
-                max_distance_mm,
-                math.hypot(zone.overlap_start_x_mm, zone.overlap_start_y_mm) * 1.4,
-                math.hypot(zone.perpendicular_foot_x_mm, zone.perpendicular_foot_y_mm) * 1.4,
+            length_mm = max(
+                length_mm,
+                math.hypot(zone.overlap_start_x_mm, zone.overlap_start_y_mm) * 1.2,
+                math.hypot(zone.perpendicular_foot_x_mm, zone.perpendicular_foot_y_mm) * 1.2,
             )
 
-        return max(self._config.evaluation_distance_mm, 1.0)
-        
+        return max(length_mm, 1.0)
+
     def _world_to_screen(self, center: QPointF, px_per_mm: float, x_mm: float, y_mm: float) -> QPointF:
         return QPointF(center.x() + x_mm * px_per_mm, center.y() - y_mm * px_per_mm)
 
@@ -93,17 +221,13 @@ class CanvasView(QWidget):
         painter.setPen(QPen(Qt.GlobalColor.gray, 1))
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "계산 / 갱신을 누르면 배치가 표시됩니다.")
 
-    def _draw_analysis_label(self, painter: QPainter) -> None:
-        if self._config is None:
-            return
-
+    def _draw_view_hint_label(self, painter: QPainter) -> None:
         painter.setPen(QPen(QColor(120, 120, 120), 1))
         painter.setFont(QFont("Sans Serif", 8))
         painter.drawText(
             QRectF(12, self.height() - 28, self.width() - 24, 18),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            f"분석 거리: {self._config.evaluation_distance_mm:.1f} mm "
-            f"(계산 단위는 mm, 화면은 근거리 배치 확인용 확대 표시)",
+            f"휠: 확대/축소 | 가운데 버튼 드래그: 이동 | Zoom: {self._zoom:.2f}x",
         )
 
     def _draw_reference_circle(self, painter: QPainter, center: QPointF, radius_px: float) -> None:
@@ -120,7 +244,7 @@ class CanvasView(QWidget):
             QPointF(center.x(), center.y() + radius_px),
         )
 
-    def _draw_angular_blind_zones(self, painter: QPainter, center: QPointF, view_radius_px: float) -> None:
+    def _draw_angular_blind_zones(self, painter: QPainter, center: QPointF, fov_length_px: float) -> None:
         if self._lens is None or self._config is None or self._config.camera_count <= 1:
             return
 
@@ -147,7 +271,7 @@ class CanvasView(QWidget):
             if gap_end <= gap_start:
                 continue
 
-            self._draw_center_wedge(painter, center, view_radius_px, gap_start, gap_end)
+            self._draw_center_wedge(painter, center, fov_length_px, gap_start, gap_end)
 
     def _draw_center_wedge(
         self,
@@ -317,7 +441,7 @@ class CanvasView(QWidget):
         )
 
         painter.drawText(
-            QRectF(12, 10, self.width() - 24, 40),
+            QRectF(12, 10, self.width() - 72, 40),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             caption,
         )
