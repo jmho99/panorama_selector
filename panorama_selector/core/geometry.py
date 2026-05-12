@@ -31,7 +31,7 @@ def adjacent_gap_count(config: LayoutConfig) -> int:
 
 
 def applied_camera_step_deg(config: LayoutConfig, lens: LensSpec) -> float:
-    """Return the angular spacing actually used between adjacent camera centers."""
+    """Return the angular spacing actually used between adjacent camera reference points."""
     if config.camera_count <= 0:
         raise ValueError("camera_count must be positive")
 
@@ -84,6 +84,11 @@ def chord_distance(
 
 
 def compute_layout(config: LayoutConfig, lens: LensSpec) -> list[Placement]:
+    """Calculate placement reference points.
+
+    The placement point is fixed at the lens half-length position.
+    The radius is therefore measured from the origin to that lens half-length point.
+    """
     if config.camera_count <= 0:
         raise ValueError("camera_count must be positive")
     if config.radius_mm < 0:

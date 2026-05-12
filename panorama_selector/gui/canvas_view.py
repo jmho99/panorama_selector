@@ -4,7 +4,7 @@ import math
 from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QToolButton, QWidget
 
 from panorama_selector.core.geometry import (
@@ -281,7 +281,7 @@ class CanvasView(QWidget):
         start_deg: float,
         end_deg: float,
     ) -> None:
-        points = [center]
+        points = QPolygonF([center])
         sample_count = max(2, int(abs(end_deg - start_deg) / 5.0) + 2)
 
         for i in range(sample_count):
@@ -332,7 +332,7 @@ class CanvasView(QWidget):
 
             painter.setBrush(QColor(230, 60, 60, 70))
             painter.setPen(QPen(QColor(210, 40, 40), 2))
-            painter.drawPolygon([point_a, point_b, overlap_point])
+            painter.drawPolygon(QPolygonF([point_a, point_b, overlap_point]))
 
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(180, 30, 30), 1, Qt.PenStyle.DashLine))
@@ -351,14 +351,101 @@ class CanvasView(QWidget):
     ) -> None:
         assert self._lens is not None
 
-        fit_ok = bool(self._fit.get("fits", True))
-        camera_color = QColor(60, 120, 220) if fit_ok else QColor(220, 90, 70)
         fov_color = QColor(80, 160, 220, 45)
 
         for placement in self._placements:
             pos = self._world_to_screen(center, px_per_mm, placement.x_mm, placement.y_mm)
             left_deg, right_deg = fov_edge_angles(placement.yaw_deg, self._lens.hfov_deg)
             self._draw_fov_wedge(painter, pos, left_deg, right_deg, fov_color, fov_length_px)
+
+        footprints = self._fit.get("footprints")
+        if isinstance(footprints, list) and footprints:
+            self._draw_footprints(painter, center, px_per_mm, footprints)
+            self._draw_placement_markers(painter, center, px_per_mm)
+            return
+
+        self._draw_fallback_camera_points(painter, center, px_per_mm)
+
+    def _draw_footprints(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        px_per_mm: float,
+        footprints: list[Any],
+    ) -> None:
+        fit_ok = bool(self._fit.get("fits", True))
+
+        body_brush = QColor(60, 120, 220, 130) if fit_ok else QColor(220, 90, 70, 150)
+        body_pen = QColor(30, 70, 150) if fit_ok else QColor(160, 40, 30)
+
+        lens_brush = QColor(80, 170, 110, 130) if fit_ok else QColor(230, 120, 80, 150)
+        lens_pen = QColor(40, 120, 70) if fit_ok else QColor(160, 60, 30)
+
+        for footprint in footprints:
+            if not isinstance(footprint, dict):
+                continue
+
+            kind = footprint.get("kind")
+            points = footprint.get("points")
+
+            if not isinstance(points, list) or len(points) < 3:
+                continue
+
+            polygon = QPolygonF()
+            for point in points:
+                if not isinstance(point, (tuple, list)) or len(point) != 2:
+                    continue
+
+                polygon.append(
+                    self._world_to_screen(
+                        center,
+                        px_per_mm,
+                        float(point[0]),
+                        float(point[1]),
+                    )
+                )
+
+            if len(polygon) < 3:
+                continue
+
+            if kind == "lens":
+                painter.setBrush(lens_brush)
+                painter.setPen(QPen(lens_pen, 1))
+            else:
+                painter.setBrush(body_brush)
+                painter.setPen(QPen(body_pen, 1))
+
+            painter.drawPolygon(polygon)
+
+    def _draw_placement_markers(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        px_per_mm: float,
+    ) -> None:
+        for placement in self._placements:
+            pos = self._world_to_screen(center, px_per_mm, placement.x_mm, placement.y_mm)
+
+            painter.setBrush(QColor(30, 30, 30))
+            painter.setPen(QPen(Qt.GlobalColor.black, 1))
+            painter.drawEllipse(pos, 4, 4)
+
+            yaw_rad = math.radians(placement.yaw_deg)
+            heading = QPointF(
+                pos.x() + math.cos(yaw_rad) * 32,
+                pos.y() - math.sin(yaw_rad) * 32,
+            )
+            painter.drawLine(pos, heading)
+            painter.drawText(pos + QPointF(8, -8), f"C{placement.index}")
+
+    def _draw_fallback_camera_points(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        px_per_mm: float,
+    ) -> None:
+        fit_ok = bool(self._fit.get("fits", True))
+        camera_color = QColor(60, 120, 220) if fit_ok else QColor(220, 90, 70)
 
         for placement in self._placements:
             pos = self._world_to_screen(center, px_per_mm, placement.x_mm, placement.y_mm)
@@ -384,7 +471,7 @@ class CanvasView(QWidget):
         color: QColor,
         length_px: float,
     ) -> None:
-        points = [origin]
+        points = QPolygonF([origin])
 
         for deg in self._angle_samples(left_deg, right_deg, count=32):
             rad = math.radians(deg)
@@ -437,7 +524,7 @@ class CanvasView(QWidget):
             f"N={self._config.camera_count}, R={self._config.radius_mm:.1f} mm, "
             f"Step={step:.1f}°({mode}), HFOV={self._lens.hfov_deg:.1f}°, "
             f"목표={self._config.target_panorama_deg:.1f}°, 최종={final_angle:.1f}°, "
-            f"{blind_status} / {status}"
+            f"기준점=렌즈 1/2 길이, {blind_status} / {status}"
         )
 
         painter.drawText(

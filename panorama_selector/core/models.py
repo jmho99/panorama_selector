@@ -5,7 +5,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CameraSpec:
-    """Physical camera body dimensions in millimetres."""
+    """Physical camera body dimensions in millimetres.
+
+    Top-view convention:
+    - body_width_mm: left/right width of the camera body
+    - body_depth_mm: front/back depth of the camera body
+    - body_height_mm: vertical height, currently stored for reporting/future 3D checks
+    """
 
     name: str = "Custom Camera"
     body_width_mm: float = 40.0
@@ -15,7 +21,12 @@ class CameraSpec:
 
 @dataclass(frozen=True)
 class LensSpec:
-    """Lens dimensions and optical field of view."""
+    """Lens dimensions and optical field of view.
+
+    Top-view convention:
+    - diameter_mm: lens front/base width in the top-view triangular footprint
+    - length_mm: distance from the camera-front contact point to the lens front/base edge
+    """
 
     name: str = "Custom Lens"
     hfov_deg: float = 130.0
@@ -26,7 +37,15 @@ class LensSpec:
 
 @dataclass(frozen=True)
 class LayoutConfig:
-    """Circular layout configuration."""
+    """Circular layout configuration.
+
+    radius_mm is the distance from the layout origin to the placement reference point.
+
+    Placement reference point:
+    - fixed at the half-length position of the lens
+    - lens triangle extends half length forward and half length backward from this point
+    - camera body is attached behind the lens apex/contact point
+    """
 
     camera_count: int = 3
     radius_mm: float = 80.0
@@ -39,14 +58,19 @@ class LayoutConfig:
 
 @dataclass(frozen=True)
 class Placement:
-    """Calculated camera pose on the reference circle."""
+    """Calculated camera pose on the reference circle.
+
+    x_mm/y_mm is the lens half-length reference point.
+    yaw_deg is the forward optical direction of the lens/camera.
+    """
 
     index: int
     angle_deg: float
     x_mm: float
     y_mm: float
     yaw_deg: float
-    
+
+
 @dataclass(frozen=True)
 class BlindZoneResult:
     """Near-field blind zone between two adjacent camera FOV boundaries."""

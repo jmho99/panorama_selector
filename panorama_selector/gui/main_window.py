@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -114,14 +116,26 @@ class MainWindow(QMainWindow):
         config = self.layout_panel.get_config()
         camera = self.spec_panel.get_camera_spec()
         lens = self.spec_panel.get_lens_spec()
-        solution = solve_min_radius_for_layout(config, camera, lens, self.spec_panel.get_clearance_mm())
-        self.layout_panel.set_radius(solution["recommended_radius_mm"])
+        clearance_mm = self.spec_panel.get_clearance_mm()
+
+        solution = solve_min_radius_for_layout(config, camera, lens, clearance_mm)
+        recommended_radius_mm = solution["recommended_radius_mm"]
+
+        if not math.isfinite(recommended_radius_mm):
+            QMessageBox.warning(
+                self,
+                "계산 불가",
+                "카메라 간 각도 간격이 0°이므로 외형 기준 최소 반지름을 계산할 수 없습니다.",
+            )
+            return
+
+        self.layout_panel.set_radius(recommended_radius_mm)
         self.calculate()
 
     def _format_result_rows(
         self,
         metrics: dict[str, float],
-        fit: dict[str, float | bool],
+        fit: dict[str, Any],
         solution: dict[str, float],
     ) -> list[tuple[str, str]]:
         fit_text = "가능" if fit["fits"] else "간섭 가능"
@@ -129,14 +143,20 @@ class MainWindow(QMainWindow):
         near_blind_count = metrics.get("near_blind_zone_count", 0.0)
         near_blind_text = "있음" if near_blind_count > 0.0 else "없음"
 
+        min_radius_text = self._format_mm(fit["min_radius_mm"])
+        recommended_radius_text = self._format_mm(solution["recommended_radius_mm"])
+
         return [
             ("카메라 개수", f"{metrics['camera_count']:.0f}"),
+            ("HFOV", f"{metrics['hfov_deg']:.2f} °"),
             ("목표 파노라마 각도", f"{metrics['target_panorama_deg']:.2f} °"),
             ("최종 파노라마 각도", f"{metrics['final_panorama_deg']:.2f} °"),
             ("카메라 간 각도 간격", f"{metrics['angular_step_deg']:.2f} °"),
-            ("HFOV", f"{metrics['hfov_deg']:.2f} °"),
-            ("인접 overlap 각도", f"{metrics['overlap_deg_each']:.2f} °"),
-            ("카메라 간 거리", f"{metrics['camera_spacing_mm']:.2f} mm"),
+            ("인접 카메라 overlap 각도", f"{metrics['overlap_deg_each']:.2f} °"),
+            ("렌즈 간 거리", f"{metrics['camera_spacing_mm']:.2f} mm"),
+            ("현재 외형 최소 간격", f"{fit['min_footprint_distance_mm']:.2f} mm"),
+            ("외형 기준 최소 반지름", min_radius_text),
+            ("권장 반지름", recommended_radius_text),
 
             ("근거리 블라인드 발생 여부", near_blind_text),
             ("근거리 블라인드 개수", f"{near_blind_count:.0f}"),
@@ -145,11 +165,19 @@ class MainWindow(QMainWindow):
             ("근거리 블라인드 총 면적", f"{metrics.get('near_blind_area_total_mm2', 0.0):.2f} mm²"),
 
             ("외형 배치 가능 여부", fit_text),
-            ("필요 최소 clearance 폭", f"{fit['required_clear_width_mm']:.2f} mm"),
+            ("배치 기준점", "렌즈 길이 1/2 위치"),
+            ("카메라 외형", f"{fit['camera_body_width_mm']:.2f} × {fit['camera_body_depth_mm']:.2f} mm"),
+            ("렌즈 외형", f"직경 {fit['lens_diameter_mm']:.2f} mm / 길이 {fit['lens_length_mm']:.2f} mm"),
+            ("필요 clearance 기준 폭", f"{fit['required_clear_width_mm']:.2f} mm"),
+            ("필요 전체 깊이", f"{fit['required_total_depth_mm']:.2f} mm"),
             ("현재 외형 여유", f"{fit['margin_mm']:.2f} mm"),
-            ("외형 기준 최소 반지름", f"{fit['min_radius_mm']:.2f} mm"),
-            ("권장 반지름", f"{solution['recommended_radius_mm']:.2f} mm"),
+            
         ]
+
+    def _format_mm(self, value: float) -> str:
+        if not math.isfinite(value):
+            return "계산 불가"
+        return f"{value:.2f} mm"
 
     def _save_current_camera(self) -> None:
         self.repository.save_camera(self.spec_panel.get_camera_spec())
