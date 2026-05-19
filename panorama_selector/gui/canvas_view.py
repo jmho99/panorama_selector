@@ -520,9 +520,11 @@ class CanvasView(QWidget):
         else:
             blind_status = "블라인드 없음"
 
+        orientation = "Portrait" if self._config.portrait_view else "Landscape"
         caption = (
             f"N={self._config.camera_count}, R={self._config.radius_mm:.1f} mm, "
             f"Step={step:.1f}°({mode}), HFOV={self._lens.hfov_deg:.1f}°, "
+            f"VFOV={self._lens.vfov_deg:.1f}°, 방향={orientation}, "
             f"목표={self._config.target_panorama_deg:.1f}°, 최종={final_angle:.1f}°, "
             f"기준점=렌즈 1/2 길이, {blind_status} / {status}"
         )

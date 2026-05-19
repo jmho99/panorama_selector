@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config / secret
+.env
+*.log
+
+# ROS bag / large data
+*.bag
+*.db3
+*.mcap
+rosbag2_*/
+output/
+outputs/
+csv_output/
+pcd_output/
+image_output/
+video_output/

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,8 @@ class LayoutConfig:
     use_camera_spacing_deg: bool = False
     camera_spacing_deg: float | None = None
     yaw_offset_deg: float = 0.0
+    portrait_view: bool = False
+    clearance_mm: float = 5.0
 
 
 @dataclass(frozen=True)
@@ -84,3 +86,32 @@ class BlindZoneResult:
     camera_spacing_mm: float
     blind_distance_mm: float
     blind_area_mm2: float
+
+
+def effective_camera_spec(camera: CameraSpec, portrait_view: bool) -> CameraSpec:
+    """Return the camera body dimensions used for the current view direction.
+
+    Portrait view means the camera is rotated 90 degrees around the optical axis.
+    The front-face width used in the top-view footprint becomes the original body
+    height, while depth stays unchanged.
+    """
+    if not portrait_view:
+        return camera
+
+    return replace(
+        camera,
+        body_width_mm=camera.body_height_mm,
+        body_height_mm=camera.body_width_mm,
+    )
+
+
+def effective_lens_spec(lens: LensSpec, portrait_view: bool) -> LensSpec:
+    """Return the lens FOV used for the current view direction."""
+    if not portrait_view:
+        return lens
+
+    return replace(
+        lens,
+        hfov_deg=lens.vfov_deg,
+        vfov_deg=lens.hfov_deg,
+    )

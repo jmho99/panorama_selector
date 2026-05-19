@@ -34,8 +34,6 @@ class SpecPanel(QWidget):
         self.lens_diameter_mm = _dimension_spin(20.0)
         self.lens_length_mm = _dimension_spin(20.0)
 
-        self.clearance_mm = _dimension_spin(5.0)
-
         camera_form = QFormLayout()
         camera_form.addRow("카메라 이름", self.camera_name)
         camera_form.addRow("카메라 폭", self.camera_width_mm)
@@ -48,7 +46,6 @@ class SpecPanel(QWidget):
         lens_form.addRow("VFOV", self.lens_vfov_deg)
         lens_form.addRow("렌즈 직경", self.lens_diameter_mm)
         lens_form.addRow("렌즈 길이", self.lens_length_mm)
-        lens_form.addRow("외형 clearance", self.clearance_mm)
 
         camera_group = QGroupBox("카메라 외형")
         camera_group.setLayout(camera_form)
@@ -70,16 +67,15 @@ class SpecPanel(QWidget):
             self.lens_vfov_deg,
             self.lens_diameter_mm,
             self.lens_length_mm,
-            self.clearance_mm,
         ):
             if isinstance(widget, QLineEdit):
                 widget.textChanged.connect(self._on_values_changed)
             else:
                 widget.valueChanged.connect(self._on_values_changed)
 
-    def _on_values_changed(self, *args) -> None:
+    def _on_values_changed(self, *_args: object) -> None:
         self.values_changed.emit()
-        
+
     def get_camera_spec(self) -> CameraSpec:
         return CameraSpec(
             name=self.camera_name.text().strip() or "Custom Camera",
@@ -96,9 +92,6 @@ class SpecPanel(QWidget):
             diameter_mm=self.lens_diameter_mm.value(),
             length_mm=self.lens_length_mm.value(),
         )
-
-    def get_clearance_mm(self) -> float:
-        return self.clearance_mm.value()
 
     def set_camera_spec(self, camera: CameraSpec) -> None:
         self.camera_name.setText(camera.name)
